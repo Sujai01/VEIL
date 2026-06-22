@@ -1,0 +1,10 @@
+{
+  "name": "Remix: Veil",
+  "description": "Premium collegiate utility and private social matching network for campus life, featuring secure identity verification, personality dating filters, and ride sharing tools.",
+  "requestFramePermissions": [
+    "geolocation"
+  ],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
