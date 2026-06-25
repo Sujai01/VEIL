@@ -243,7 +243,6 @@ app.get('/api/events/trending', authenticateToken, async (req: AuthenticatedRequ
   try {
     const events = await query('SELECT * FROM events ORDER BY interested_count DESC LIMIT 10');
     
-    // Map database fields to frontend camelCase
     const formattedEvents = events.map((e: any) => ({
       id: e.id,
       title: e.title,
@@ -257,6 +256,36 @@ app.get('/api/events/trending', authenticateToken, async (req: AuthenticatedRequ
     }));
 
     res.json({ success: true, data: formattedEvents });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// Dynamic Spotlight route
+app.get('/api/home/spotlight', authenticateToken, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const events = await query('SELECT * FROM events ORDER BY interested_count DESC LIMIT 1');
+    if (events.length > 0) {
+      res.json({ success: true, type: 'EVENT', data: {
+        id: events[0].id, title: events[0].title, category: events[0].category, image: events[0].image,
+        startDate: events[0].start_date, endDate: events[0].end_date, location: events[0].location, interestedCount: events[0].interested_count
+      } });
+      return;
+    }
+
+    const memes = await query('SELECT * FROM posts WHERE type = "MEME" ORDER BY created_at DESC LIMIT 1');
+    if (memes.length > 0) {
+      res.json({ success: true, type: 'MEME', data: memes[0] });
+      return;
+    }
+
+    const polls = await query('SELECT * FROM posts WHERE type = "POLL" ORDER BY created_at DESC LIMIT 1');
+    if (polls.length > 0) {
+      res.json({ success: true, type: 'POLL', data: polls[0] });
+      return;
+    }
+
+    res.json({ success: true, type: 'PULSE', data: null });
   } catch (err: any) {
     res.status(500).json({ success: false, error: err.message });
   }
@@ -318,14 +347,14 @@ app.get('/api/feed', authenticateToken, async (req: AuthenticatedRequest, res: R
   try {
     const posts = await query(`
       SELECT p.*, 
-        (SELECT COUNT(*) FROM post_interests WHERE post_id = p.id) as interestedCount,
-        (SELECT COUNT(*) FROM post_interests WHERE post_id = p.id AND user_id = ?) as isInterestedByMe
+        (SELECT COUNT(*) FROM post_reactions WHERE post_id = p.id) as reactionsCount,
+        (SELECT type FROM post_reactions WHERE post_id = p.id AND user_id = ?) as myReaction
       FROM posts p
       ORDER BY p.created_at DESC
       LIMIT 50
     `, [req.userId]);
 
-    const pollPostIds = posts.filter(p => p.type === 'poll').map(p => p.id);
+    const pollPostIds = posts.filter(p => p.type === 'POLL' || p.type === 'poll').map(p => p.id);
     let allOptions: any[] = [];
     
     if (pollPostIds.length > 0) {
@@ -347,32 +376,36 @@ app.get('/api/feed', authenticateToken, async (req: AuthenticatedRequest, res: R
     }, {});
 
     const feedItems = posts.map(p => {
-      if (p.type === 'poll') {
+      if (p.type === 'POLL' || p.type === 'poll') {
         const pollData = optionsByPostId[p.id] || { options: [], userVotedOptionId: null };
         return {
           id: p.id,
-          type: 'poll',
+          type: p.type,
           authorName: p.author_name,
           authorLabel: p.author_label,
           iconName: 'Vote',
           timeAgoText: 'Recently',
           locationText: p.location_text || '',
           content: p.content,
+          image: p.image,
+          tags: p.tags ? JSON.parse(p.tags) : [],
           pollOptions: pollData.options,
           userVotedOptionId: pollData.userVotedOptionId
         };
       } else {
         return {
           id: p.id,
-          type: 'post',
+          type: p.type,
           authorName: p.author_name,
           authorLabel: p.author_label,
           iconName: 'Compass',
           timeAgoText: 'Recently',
           locationText: p.location_text || '',
           content: p.content,
-          interestedCount: p.interestedCount,
-          isInterestedByMe: !!p.isInterestedByMe
+          image: p.image,
+          tags: p.tags ? JSON.parse(p.tags) : [],
+          reactionsCount: p.reactionsCount,
+          myReaction: p.myReaction
         };
       }
     });
@@ -384,21 +417,32 @@ app.get('/api/feed', authenticateToken, async (req: AuthenticatedRequest, res: R
 });
 
 app.post('/api/feed/post', authenticateToken, async (req: AuthenticatedRequest, res: Response) => {
-  const { content, locationText, authorLabel } = req.body;
+  const { content, locationText, authorLabel, type, image, tags, options } = req.body;
   if (!content || typeof content !== 'string' || content.length > 1000) {
     res.status(400).json({ error: 'Content is required and must be under 1000 characters' });
     return;
   }
 
+  const postType = type || 'TEXT';
+
   try {
     const user = await get('SELECT name FROM users WHERE id = ?', [req.userId]);
     const id = crypto.randomUUID();
+    const tagsString = tags ? JSON.stringify(tags) : null;
     await run(
-      `INSERT INTO posts (id, author_id, author_name, author_label, type, content, location_text)
-       VALUES (?, ?, ?, ?, 'post', ?, ?)`,
-      [id, req.userId, user.name, authorLabel || 'Student', content, locationText || 'Campus']
+      `INSERT INTO posts (id, author_id, author_name, author_label, type, content, location_text, image, tags)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [id, req.userId, user.name, authorLabel || 'Student', postType, content, locationText || 'Campus', image || null, tagsString]
     );
-    res.json({ success: true });
+
+    if (postType === 'POLL' && options && Array.isArray(options)) {
+      for (const optText of options) {
+        const optId = crypto.randomUUID();
+        await run('INSERT INTO poll_options (id, post_id, text) VALUES (?, ?, ?)', [optId, id, optText]);
+      }
+    }
+
+    res.json({ success: true, post_id: id });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }
@@ -454,17 +498,23 @@ app.post('/api/feed/:id/vote', authenticateToken, async (req: AuthenticatedReque
   }
 });
 
-app.post('/api/feed/:id/interest', authenticateToken, async (req: AuthenticatedRequest, res: Response) => {
+app.post('/api/feed/:id/react', authenticateToken, async (req: AuthenticatedRequest, res: Response) => {
   const postId = req.params.id;
+  const { reactionType } = req.body; // e.g. 'like', 'laugh', 'fire'
 
   try {
-    const existing = await get('SELECT * FROM post_interests WHERE user_id = ? AND post_id = ?', [req.userId, postId]);
-    if (existing) {
-      await run('DELETE FROM post_interests WHERE user_id = ? AND post_id = ?', [req.userId, postId]);
-      res.json({ interested: false });
+    const existing = await get('SELECT * FROM post_reactions WHERE user_id = ? AND post_id = ?', [req.userId, postId]);
+    if (existing && existing.type === reactionType) {
+      // Toggle off
+      await run('DELETE FROM post_reactions WHERE user_id = ? AND post_id = ?', [req.userId, postId]);
+      res.json({ reacted: false });
     } else {
-      await run('INSERT INTO post_interests (user_id, post_id) VALUES (?, ?)', [req.userId, postId]);
-      res.json({ interested: true });
+      // Upsert
+      await run(`
+        INSERT INTO post_reactions (user_id, post_id, type) VALUES (?, ?, ?)
+        ON CONFLICT(user_id, post_id, type) DO UPDATE SET type = excluded.type
+      `, [req.userId, postId, reactionType || 'like']);
+      res.json({ reacted: true, type: reactionType || 'like' });
     }
   } catch (err: any) {
     res.status(500).json({ error: err.message });

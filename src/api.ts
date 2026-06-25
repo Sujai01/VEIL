@@ -55,6 +55,7 @@ export const api = {
   createPoll: (body: any) => request('/api/feed/poll', { method: 'POST', body: JSON.stringify(body) }),
   votePoll: (postId: string, optionId: string) => request(`/api/feed/${postId}/vote`, { method: 'POST', body: JSON.stringify({ optionId }) }),
   toggleInterest: (postId: string) => request(`/api/feed/${postId}/interest`, { method: 'POST' }),
+  toggleReaction: (postId: string, reactionType: string) => request(`/api/feed/${postId}/react`, { method: 'POST', body: JSON.stringify({ reactionType }) }),
 
   // Confessions
   getConfessions: () => request('/api/confessions'),
@@ -77,6 +78,7 @@ export const api = {
   getTournaments: () => request('/api/tournaments'),
   registerTournament: (id: string) => request(`/api/tournaments/${id}/register`, { method: 'POST' }),
 
-  // Events
+  // Events and Spotlight
   getTrendingEvents: () => request('/api/events/trending'),
+  getSpotlight: () => request('/api/home/spotlight'),
 };

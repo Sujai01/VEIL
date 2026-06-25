@@ -6,21 +6,31 @@ export type VerifyMethod = 'SHEERID' | 'COLLEGE_ID';
 
 export interface FeedItem {
   id: string;
-  type: 'post' | 'poll';
+  type: 'TEXT' | 'MEME' | 'POLL' | 'QUESTION' | 'CONFESSION' | 'EVENT' | 'MEDIA' | 'post' | 'poll';
   authorName: string;
   authorLabel?: string;
   iconName: string;
   timeAgoText: string;
   locationText: string;
   content: string;
-  interestedCount?: number;
-  isInterestedByMe?: boolean;
+  image?: string;
+  tags?: string[];
+  reactionsCount?: number;
+  myReaction?: string | null;
+  interestedCount?: number; // legacy
+  isInterestedByMe?: boolean; // legacy
   pollOptions?: {
     id: string;
     text: string;
     votes: number;
   }[];
   userVotedOptionId?: string;
+}
+
+export interface SpotlightResponse {
+  success: boolean;
+  type: 'EVENT' | 'MEME' | 'POLL' | 'CONFESSION' | 'TOURNAMENT' | 'PULSE';
+  data: any; // Can be casted to specific types based on type field
 }
 
 export interface Ride {

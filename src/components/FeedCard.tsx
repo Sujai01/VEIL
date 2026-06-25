@@ -13,8 +13,8 @@ export default function FeedCard({ item }: { item: any }) {
     }
   });
 
-  const interestMutation = useMutation({
-    mutationFn: () => api.toggleInterest(item.id),
+  const reactionMutation = useMutation({
+    mutationFn: (type: string) => api.toggleReaction(item.id, type),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['feed'] });
     }
@@ -25,9 +25,9 @@ export default function FeedCard({ item }: { item: any }) {
     voteMutation.mutate(optionId);
   }, [item.userVotedOptionId, voteMutation]);
 
-  const handleInterestedToggle = useCallback(() => {
-    interestMutation.mutate();
-  }, [interestMutation]);
+  const handleReaction = useCallback(() => {
+    reactionMutation.mutate('like');
+  }, [reactionMutation]);
 
   const handleReportBlock = async () => {
     const action = window.prompt('Type "report" to report this post, or "block" to block this user');
@@ -44,7 +44,10 @@ export default function FeedCard({ item }: { item: any }) {
     }
   };
 
-  if (item.type === 'poll') {
+  const isPoll = item.type === 'POLL' || item.type === 'poll';
+  const isMeme = item.type === 'MEME';
+  
+  if (isPoll) {
     const totalPollVotes = item.pollOptions.reduce((sum: number, opt: any) => sum + opt.votes, 0);
 
     return (
@@ -114,7 +117,7 @@ export default function FeedCard({ item }: { item: any }) {
     );
   }
 
-  // Default post
+  // Default post (TEXT, MEME, EVENT, CONFESSION, MEDIA)
   return (
     <div className="bg-white p-5 rounded-2xl card-shadow border border-outline-variant/15 space-y-4">
       <div className="flex justify-between items-start">
@@ -126,8 +129,13 @@ export default function FeedCard({ item }: { item: any }) {
             <p className="font-display text-xs font-extrabold text-on-surface leading-none">
               {item.authorName}
             </p>
-            <p className="text-[10px] text-on-surface-variant font-mono mt-1">
+            <p className="text-[10px] text-on-surface-variant font-mono mt-1 flex items-center gap-1">
               {item.timeAgoText} • {item.locationText}
+              {item.tags && item.tags.length > 0 && (
+                <span className="bg-surface-container-high px-1.5 py-0.5 rounded text-[8px] uppercase font-bold text-on-surface">
+                  {item.tags[0]}
+                </span>
+              )}
             </p>
           </div>
         </div>
@@ -140,17 +148,23 @@ export default function FeedCard({ item }: { item: any }) {
         {item.content}
       </p>
 
+      {item.image && (
+        <div className="rounded-xl overflow-hidden mt-3 max-h-64 relative border border-outline-variant/20 bg-surface-container">
+          <img src={item.image} alt="Post content" className="w-full h-full object-cover" loading="lazy" referrerPolicy="no-referrer" />
+        </div>
+      )}
+
       <div className="flex gap-3 pt-1">
         <button 
-          onClick={handleInterestedToggle}
+          onClick={handleReaction}
           className={`flex-1 py-2.5 rounded-xl text-xs font-bold font-display flex items-center justify-center gap-2 transition-all duration-150 active:scale-95 ${
-            item.isInterestedByMe 
+            item.myReaction
               ? 'bg-primary text-white shadow-md shadow-primary/10' 
               : 'bg-primary-container/10 hover:bg-primary-container/15 text-primary border border-primary/5'
           }`}
         >
           <CheckCircle2 className="w-4 h-4" />
-          <span>{item.isInterestedByMe ? 'Interested ✓' : 'Mark Interested'} ({item.interestedCount})</span>
+          <span>{item.myReaction ? 'Reacted ✓' : 'React'} ({item.reactionsCount || item.interestedCount || 0})</span>
         </button>
         <button className="px-3.5 py-2.5 rounded-xl bg-surface-container-low hover:bg-surface-container-high transition-colors text-on-surface-variant active:scale-95 duration-105">
           <Share2 className="w-4.5 h-4.5" />

@@ -84,8 +84,11 @@ export async function initDatabase() {
       author_id TEXT REFERENCES users(id) ON DELETE SET NULL,
       author_name TEXT NOT NULL,
       author_label TEXT,
-      type TEXT CHECK(type IN ('post', 'poll')) NOT NULL,
+      type TEXT CHECK(type IN ('TEXT', 'MEME', 'POLL', 'QUESTION', 'CONFESSION', 'EVENT', 'MEDIA', 'post', 'poll')) NOT NULL,
       content TEXT NOT NULL,
+      image TEXT,
+      tags TEXT,
+      visibility TEXT DEFAULT 'public',
       location_text TEXT,
       created_at TEXT DEFAULT CURRENT_TIMESTAMP
     )
@@ -116,6 +119,28 @@ export async function initDatabase() {
       user_id TEXT REFERENCES users(id) ON DELETE CASCADE,
       post_id TEXT REFERENCES posts(id) ON DELETE CASCADE,
       PRIMARY KEY (user_id, post_id)
+    )
+  `);
+
+  // Create Post Reactions Table
+  await run(`
+    CREATE TABLE IF NOT EXISTS post_reactions (
+      user_id TEXT REFERENCES users(id) ON DELETE CASCADE,
+      post_id TEXT REFERENCES posts(id) ON DELETE CASCADE,
+      type TEXT NOT NULL,
+      PRIMARY KEY (user_id, post_id, type)
+    )
+  `);
+
+  // Create Post Comments Table
+  await run(`
+    CREATE TABLE IF NOT EXISTS post_comments (
+      id TEXT PRIMARY KEY,
+      post_id TEXT REFERENCES posts(id) ON DELETE CASCADE,
+      user_id TEXT REFERENCES users(id) ON DELETE CASCADE,
+      author_name TEXT NOT NULL,
+      content TEXT NOT NULL,
+      created_at TEXT DEFAULT CURRENT_TIMESTAMP
     )
   `);
 
@@ -350,12 +375,13 @@ export async function initDatabase() {
         ('u4', 75, 90, 70, '["Dreamer", "Caffeinated", "Active"]', 'Late-night drive and deep talks')
     `);
 
-    // Add posts / polls
+    // Add posts / polls / memes
     await run(`
-      INSERT INTO posts (id, author_id, author_name, author_label, type, content, location_text)
+      INSERT INTO posts (id, author_id, author_name, author_label, type, content, location_text, image, tags)
       VALUES 
-        ('p1', 'u2', 'Dramatics Society', 'Organizer', 'post', 'Auditions for our upcoming flagship production "Veil of Shadows" are now officially open. All batches, backgrounds and disciplines are welcome! 🎭', 'Main Auditorium'),
-        ('p2', 'u3', 'Campus Council', 'Council', 'poll', 'Which venue is better suited for hosting the upcoming Winter Food Fest?', 'SAC Lawn')
+        ('p1', 'u2', 'Dramatics Society', 'Organizer', 'TEXT', 'Auditions for our upcoming flagship production "Veil of Shadows" are now officially open. All batches, backgrounds and disciplines are welcome! 🎭', 'Main Auditorium', NULL, NULL),
+        ('p2', 'u3', 'Campus Council', 'Council', 'POLL', 'Which venue is better suited for hosting the upcoming Winter Food Fest?', 'SAC Lawn', NULL, NULL),
+        ('p3', 'u4', 'Sneha Rao', 'Student', 'MEME', 'When the prof says the exam will be based on the slides...', 'LHC', 'https://images.unsplash.com/photo-1544214532-61da6cb49377?auto=format&fit=crop&q=80', '["Exam", "Academic"]')
     `);
 
     // Add poll options
@@ -366,6 +392,8 @@ export async function initDatabase() {
     await run(`INSERT INTO poll_votes (user_id, post_id, option_id) VALUES ('u2', 'p2', 'opt1')`);
     await run(`INSERT INTO poll_votes (user_id, post_id, option_id) VALUES ('u3', 'p2', 'opt2')`);
     await run(`INSERT INTO post_interests (user_id, post_id) VALUES ('u3', 'p1')`);
+    await run(`INSERT INTO post_reactions (user_id, post_id, type) VALUES ('u3', 'p1', 'like')`);
+    await run(`INSERT INTO post_reactions (user_id, post_id, type) VALUES ('u1', 'p3', 'laugh')`);
 
     // Add confessions
     await run(`
