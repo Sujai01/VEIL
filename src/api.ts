@@ -40,11 +40,14 @@ export const api = {
   register: (body: any) => request('/api/auth/register', { method: 'POST', body: JSON.stringify(body) }),
   login: (body: any) => request('/api/auth/login', { method: 'POST', body: JSON.stringify(body) }),
   me: () => request('/api/auth/me'),
+  deleteAccount: () => request('/api/users/me', { method: 'DELETE' }),
   
-  // Profile
+  // Profile / Users
   saveCompatibility: (body: any) => request('/api/profile/compatibility', { method: 'POST', body: JSON.stringify(body) }),
   getMatches: () => request('/api/profile/matches'),
   searchClassmates: (q: string) => request(`/api/classmates?q=${encodeURIComponent(q)}`),
+  reportUser: (id: string, reason?: string) => request(`/api/users/${id}/report`, { method: 'POST', body: JSON.stringify({ reason }) }),
+  blockUser: (id: string) => request(`/api/users/${id}/block`, { method: 'POST' }),
 
   // Feed
   getFeed: () => request('/api/feed'),
@@ -73,4 +76,7 @@ export const api = {
   // Tournaments
   getTournaments: () => request('/api/tournaments'),
   registerTournament: (id: string) => request(`/api/tournaments/${id}/register`, { method: 'POST' }),
+
+  // Events
+  getTrendingEvents: () => request('/api/events/trending'),
 };

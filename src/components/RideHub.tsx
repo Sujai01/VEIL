@@ -1,13 +1,17 @@
 import React, { useState } from 'react';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { 
   Car, MapPin, Search, Sliders, Plus, X, Users, ArrowRight, ShieldCheck, 
   MapPinned, HelpCircle, Compass, AlarmClock, DollarSign 
 } from 'lucide-react';
 import { Ride } from '../types';
+import { api } from '../api';
 
 export default function RideHub() {
   const [filterQuery, setFilterQuery] = useState('');
   const [isAddingRide, setIsAddingRide] = useState(false);
+  const [rejectedIds, setRejectedIds] = useState<Set<string>>(new Set());
+  const queryClient = useQueryClient();
   
   // New Ride Form states
   const [newFrom, setNewFrom] = useState('');
@@ -17,100 +21,56 @@ export default function RideHub() {
   const [newDepTime, setNewDepTime] = useState('06:30 PM');
   const [newSeats, setNewSeats] = useState(3);
 
-  const [rides, setRides] = useState<Ride[]>([
-    {
-      id: 'r1',
-      from: 'Galgotias University, Main Gate',
-      to: 'Noida Sector 62, Metro Stn',
-      pricePerPerson: 110,
-      timeText: '04:30 PM',
-      provider: 'Uber XL',
-      seatsAvailable: 2,
-      seatsTotal: 4,
-      status: 'Leaving Soon',
-      timeAgoText: '2 mins ago'
-    },
-    {
-      id: 'r2',
-      from: 'Shiv Nadar University',
-      to: 'DLF Mall of India',
-      pricePerPerson: 85,
-      timeText: '05:15 PM',
-      provider: 'Ola Prime',
-      seatsAvailable: 3,
-      seatsTotal: 4,
-      status: 'Filling Fast',
-      timeAgoText: '15 mins ago'
-    },
-    {
-      id: 'r3',
-      from: 'Amity University Sector 125',
-      to: 'IGI Airport Terminal 3',
-      pricePerPerson: 140,
-      timeText: '06:00 PM',
-      provider: 'Uber Intercity',
-      seatsAvailable: 1,
-      seatsTotal: 4,
-      status: 'Available',
-      timeAgoText: '40 mins ago'
+  const { data: fetchedRides = [], isLoading } = useQuery<Ride[]>({
+    queryKey: ['rides'],
+    queryFn: api.getRides
+  });
+
+  const rides = fetchedRides.map(r => ({
+    ...r,
+    isRejected: rejectedIds.has(r.id)
+  }));
+
+  const createMutation = useMutation({
+    mutationFn: (body: any) => api.createRide(body),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['rides'] });
+      setNewFrom('');
+      setNewTo('');
+      setNewPrice('120');
+      setNewProvider('Uber Sedan');
+      setIsAddingRide(false);
     }
-  ]);
+  });
 
   const handleCreateRide = (e: React.FormEvent) => {
     e.preventDefault();
     if (!newFrom.trim() || !newTo.trim()) return;
 
-    const addedRide: Ride = {
-      id: Date.now().toString(),
+    createMutation.mutate({
       from: newFrom,
       to: newTo,
       pricePerPerson: Number(newPrice) || 100,
       timeText: newDepTime,
       provider: newProvider,
       seatsAvailable: newSeats,
-      seatsTotal: 4,
-      status: 'Available',
-      timeAgoText: 'Just now'
-    };
-
-    setRides([addedRide, ...rides]);
-    
-    // Clear state
-    setNewFrom('');
-    setNewTo('');
-    setNewPrice('120');
-    setNewProvider('Uber Sedan');
-    setIsAddingRide(false);
+      seatsTotal: 4
+    });
   };
 
-  const handleAcceptRide = async (id: string) => {
-    try {
-      const { api } = await import('../api');
-      await api.bookRide(id);
-      setRides(rides.map(r => {
-        if (r.id === id) {
-          if (r.isAccepted) return r; // already accepted
-          return {
-            ...r,
-            isAccepted: true,
-            seatsAvailable: Math.max(0, r.seatsAvailable - 1)
-          };
-        }
-        return r;
-      }));
-    } catch (err) {
-      console.error(err);
+  const bookMutation = useMutation({
+    mutationFn: (id: string) => api.bookRide(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['rides'] });
     }
+  });
+
+  const handleAcceptRide = (id: string) => {
+    bookMutation.mutate(id);
   };
 
   const handleRejectRide = (id: string) => {
-    // Just hide it locally
-    setRides(rides.map(r => {
-      if (r.id === id) {
-        return { ...r, isRejected: true };
-      }
-      return r;
-    }));
+    setRejectedIds(prev => new Set(prev).add(id));
   };
 
   const filteredRides = rides.filter(r => 

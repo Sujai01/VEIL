@@ -83,3 +83,15 @@ export interface Tournament {
   dateText: string;
   isRegistered?: boolean;
 }
+
+export interface CampusEvent {
+  id: string;
+  title: string;
+  category: string;
+  image: string;
+  startDate: string;
+  endDate: string;
+  location: string;
+  interestedCount: number;
+  universityId: string;
+}

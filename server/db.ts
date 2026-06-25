@@ -44,6 +44,9 @@ export const get = (sql: string, params: any[] = []): Promise<any> => {
 
 export async function initDatabase() {
   console.log('Initializing database tables...');
+  
+  // Enable Write-Ahead Logging for better concurrency
+  await run('PRAGMA journal_mode = WAL;');
 
   // Create Users Table
   await run(`
@@ -210,10 +213,107 @@ export async function initDatabase() {
   // Create Tournament Registrations Table
   await run(`
     CREATE TABLE IF NOT EXISTS tournament_registrations (
-      tournament_id TEXT REFERENCES tournaments(id) ON DELETE CASCADE,
-      user_id TEXT REFERENCES users(id) ON DELETE CASCADE,
+      tournament_id TEXT,
+      user_id TEXT,
+      registered_at TEXT DEFAULT CURRENT_TIMESTAMP,
       PRIMARY KEY (tournament_id, user_id)
-    )
+    );
+  `);
+
+  // Create App Store Policy Compliance Tables
+  await run(`
+    CREATE TABLE IF NOT EXISTS user_reports (
+      id TEXT PRIMARY KEY,
+      reporter_id TEXT,
+      reported_id TEXT,
+      reason TEXT,
+      created_at TEXT DEFAULT CURRENT_TIMESTAMP
+    );
+  `);
+
+  await run(`
+    CREATE TABLE IF NOT EXISTS user_blocks (
+      blocker_id TEXT,
+      blocked_id TEXT,
+      created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+      PRIMARY KEY (blocker_id, blocked_id)
+    );
+  `);
+
+  // Create Events Table
+  await run(`
+    CREATE TABLE IF NOT EXISTS events (
+      id TEXT PRIMARY KEY,
+      title TEXT NOT NULL,
+      category TEXT NOT NULL,
+      image TEXT NOT NULL,
+      start_date TEXT NOT NULL,
+      end_date TEXT NOT NULL,
+      location TEXT NOT NULL,
+      interested_count INTEGER DEFAULT 0,
+      university_id TEXT,
+      created_at TEXT DEFAULT CURRENT_TIMESTAMP
+    );
+  `);
+
+  // Create Additional Tables (Step 3)
+  await run(`
+    CREATE TABLE IF NOT EXISTS universities (
+      id TEXT PRIMARY KEY,
+      name TEXT UNIQUE NOT NULL,
+      domain TEXT UNIQUE NOT NULL,
+      created_at TEXT DEFAULT CURRENT_TIMESTAMP
+    );
+  `);
+
+  await run(`
+    CREATE TABLE IF NOT EXISTS notifications (
+      id TEXT PRIMARY KEY,
+      user_id TEXT,
+      type TEXT NOT NULL,
+      content TEXT NOT NULL,
+      is_read INTEGER DEFAULT 0,
+      created_at TEXT DEFAULT CURRENT_TIMESTAMP
+    );
+  `);
+
+  await run(`
+    CREATE TABLE IF NOT EXISTS matches (
+      id TEXT PRIMARY KEY,
+      user_id_1 TEXT,
+      user_id_2 TEXT,
+      score INTEGER,
+      status TEXT DEFAULT 'pending',
+      created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE(user_id_1, user_id_2)
+    );
+  `);
+
+  await run(`
+    CREATE TABLE IF NOT EXISTS chat_rooms (
+      id TEXT PRIMARY KEY,
+      type TEXT DEFAULT 'direct',
+      created_at TEXT DEFAULT CURRENT_TIMESTAMP
+    );
+  `);
+
+  await run(`
+    CREATE TABLE IF NOT EXISTS messages (
+      id TEXT PRIMARY KEY,
+      room_id TEXT,
+      sender_id TEXT,
+      content TEXT,
+      created_at TEXT DEFAULT CURRENT_TIMESTAMP
+    );
+  `);
+
+  await run(`
+    CREATE TABLE IF NOT EXISTS settings (
+      user_id TEXT PRIMARY KEY,
+      push_enabled INTEGER DEFAULT 1,
+      haptic_enabled INTEGER DEFAULT 1,
+      theme TEXT DEFAULT 'system'
+    );
   `);
 
   console.log('Tables initialized successfully.');
@@ -318,6 +418,14 @@ export async function initDatabase() {
 
     // Add tournament registrations
     await run(`INSERT INTO tournament_registrations (tournament_id, user_id) VALUES ('t1', 'u2')`);
+
+    // Add Events
+    await run(`
+      INSERT INTO events (id, title, category, image, start_date, end_date, location, interested_count, university_id)
+      VALUES 
+        ('e1', 'Rendezvous ''24', 'CULTURAL FEST', 'https://lh3.googleusercontent.com/aida-public/AB6AXuDav8Uh44qrzVkHoCoDPsY1CflluKJM-5pJ3kOkWJErIT2KKS6mBGek_nwa3157natX1b0II__kbO8IXmQefPEt5IMpRAxPJ4ns9_oysq719vrzkjPcLZ682r9QTbZzxggLQMdrxL6jW6Vr-s3fybsrxPGJOuC5_GMydwLLV90iDf6E1THIsn3m9LF747x24H5jpuWcE5W8UrSnQAj-CG9NwpwgWhHYzQHvp6-Rx3BcEXjroEdMK9sII0QkynjW72-CGuAoYx6Ficeu', 'Oct 12', 'Oct 15', '', 120, 'uni_1'),
+        ('e2', 'Figma Prototyping', 'WORKSHOP', 'https://lh3.googleusercontent.com/aida-public/AB6AXuD3ZsPkYilQ69JIF9-IxtCN40vOG0LkCim8mxDOjY8R3qBw8Ho8CW34XqZQ6YSbEtJtqCSOhPoTfDopgsCf7B3A9Fhy4Lqe05Yt5A7wF4McSPzSqhYQBqCJBbA16KmCtiO7UweZ5Y7ejFKMvzXWO5T5iRi7qhNV_DVtmUxn9s-a7fNNo8jNIUcBjiZcuvKeFOZ9GsPs1VfuFkhxBv39QHjiFru-_ZgAWYGH6I8W1H1ehgnkGhtq8Hkjfc4-NLdxunUyA1nMunPBPzOj', 'Oct 20', 'Oct 20', 'Seminar Hall 2', 45, 'uni_1')
+    `);
 
     console.log('Seed data successfully inserted.');
   }

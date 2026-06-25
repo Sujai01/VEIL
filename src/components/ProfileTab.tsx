@@ -1,9 +1,11 @@
 import React, { useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { 
   ShieldCheck, LogOut, Calendar, Award, Star, Heart, Car, 
   Settings, HelpCircle, Activity, UserRound, GraduationCap, BellRing, Smartphone,
   Moon, Sun
 } from 'lucide-react';
+import { api } from '../api';
 
 interface ProfileTabProps {
   methodUsed: string;
@@ -13,10 +15,16 @@ interface ProfileTabProps {
 }
 
 export default function ProfileTab({ methodUsed, onLogout, isDarkMode, onToggleDarkMode }: ProfileTabProps) {
-  // Load matched stats from localStorage (calculated dynamically during onboarding!)
-  const socialRes = Number(localStorage.getItem('veil_social_resonance')) || 82;
-  const intelDepth = Number(localStorage.getItem('veil_intellectual_depth')) || 94;
-  const spontaneity = Number(localStorage.getItem('veil_spontaneity')) || 65;
+  const { data: meData } = useQuery({
+    queryKey: ['me'],
+    queryFn: api.me
+  });
+
+  const profile = meData?.user?.profile || {};
+  const socialRes = profile.socialResonance || 82;
+  const intelDepth = profile.intellectualDepth || 94;
+  const spontaneity = profile.spontaneity || 65;
+  const user = meData?.user || { name: 'Student', degree: 'B.Tech', college: 'IIT Delhi' };
 
   const [highMatchAlerts, setHighMatchAlerts] = useState<boolean>(() => {
     const saved = localStorage.getItem('veil_high_match_alerts');
@@ -54,6 +62,16 @@ export default function ProfileTab({ methodUsed, onLogout, isDarkMode, onToggleD
     }
   };
 
+  const { data: matches = [] } = useQuery({
+    queryKey: ['matches'],
+    queryFn: api.getMatches
+  });
+
+  const { data: rides = [] } = useQuery({
+    queryKey: ['rides'],
+    queryFn: api.getRides
+  });
+
   return (
     <div className="space-y-6 animate-fade-in text-left pb-32 max-w-sm mx-auto">
       
@@ -71,16 +89,17 @@ export default function ProfileTab({ methodUsed, onLogout, isDarkMode, onToggleD
             </div>
             
             <div>
-              <h3 className="font-display text-xl font-extrabold tracking-tight">Aryan Sharma</h3>
+              <h3 className="font-display text-xl font-extrabold tracking-tight">{user.name}</h3>
               <p className="text-[10px] uppercase font-mono tracking-widest text-white/70 mt-1">
-                Verified: Delhi University / IIT Delhi
+                Verified: {user.college}
               </p>
             </div>
           </div>
 
           <div className="w-12 h-12 rounded-full overflow-hidden border-2 border-white/20 shadow-md">
             <img 
-              alt="User profile avatar of Aryan Sharma" 
+              loading="lazy"
+              alt={`User profile avatar of ${user.name}`}
               className="w-full h-full object-cover" 
               src="https://lh3.googleusercontent.com/aida-public/AB6AXuDN6tE-Nq-4JM6ymFe0W807zmzJF8hryvwLS68F0TRD6ykdzPmAGvfTg5y44RrYVOVgnkkizr92qndlS49ghrStkLmOtOV-poW80tQEx-2_PQiUoRFkpOOnO5cNbjXoqfpYAF1eJNKzZHrWXdI6KwzkmIHpm3a2aav7YaKzhCoKL45kzmWdQTbAMkMc2aMl06FMnsZ0BFnAgLjuNDS0ud7FlAv8-0Lev8mCaRCKUk6Nawn7cvlRjOfotX7ASrjQhY5P7jKw8wIXhTfN"
               referrerPolicy="no-referrer"
@@ -92,11 +111,11 @@ export default function ProfileTab({ methodUsed, onLogout, isDarkMode, onToggleD
         <div className="pt-6 mt-6 border-t border-white/10 flex justify-between items-center relative z-10">
           <div>
             <span className="text-[9px] uppercase font-mono tracking-widest text-white/60">DEPARTMENT</span>
-            <p className="text-xs font-bold font-display mt-0.5">B.Tech Computers</p>
+            <p className="text-xs font-bold font-display mt-0.5">{user.degree.split(',')[0] || user.degree}</p>
           </div>
           <div className="text-right">
             <span className="text-[9px] uppercase font-mono tracking-widest text-white/60">BATCH YEAR</span>
-            <p className="text-xs font-bold font-display mt-0.5">Class of 2025</p>
+            <p className="text-xs font-bold font-display mt-0.5">{user.degree.includes(',') ? user.degree.split(',')[1].trim() : 'Class of 2025'}</p>
           </div>
         </div>
       </section>
@@ -118,7 +137,7 @@ export default function ProfileTab({ methodUsed, onLogout, isDarkMode, onToggleD
                 Anonymous Matches
               </span>
               <p className="text-lg font-extrabold font-display leading-tight text-primary mt-0.5">
-                4 Active
+                {matches.length} Active
               </p>
             </div>
           </div>
@@ -133,7 +152,7 @@ export default function ProfileTab({ methodUsed, onLogout, isDarkMode, onToggleD
                 Rides Splits
               </span>
               <p className="text-lg font-extrabold font-display leading-tight text-primary mt-0.5">
-                3 Confirmed
+                {rides.length} Confirmed
               </p>
             </div>
           </div>
@@ -324,6 +343,28 @@ export default function ProfileTab({ methodUsed, onLogout, isDarkMode, onToggleD
           <div>
             <p className="font-display text-xs font-bold">Logout to Fresh Splash</p>
             <p className="text-[10px] text-error/80 font-mono">Resets onboarding and state</p>
+          </div>
+        </button>
+
+        {/* Delete Account action */}
+        <button 
+          onClick={async () => {
+            if (window.confirm('Are you sure you want to permanently delete your account? This action cannot be undone.')) {
+              triggerHaptic();
+              try {
+                await api.deleteAccount();
+              } catch (err) {
+                console.error(err);
+              }
+              onLogout();
+            }
+          }}
+          className="w-full p-4 flex items-center gap-3 text-white bg-error hover:bg-error/90 transition-colors text-left"
+        >
+          <div className="w-5 h-5 flex items-center justify-center font-bold">!</div>
+          <div>
+            <p className="font-display text-xs font-bold">Delete Account</p>
+            <p className="text-[10px] text-white/80 font-mono">Permanently erase all data</p>
           </div>
         </button>
 

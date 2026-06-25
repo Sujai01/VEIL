@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { 
   ChevronsUp, ChevronRight, Bell, Home, Search, Heart, Car, User, 
   Menu, Info, ShieldCheck, HelpCircle, LogOut 
@@ -12,6 +13,7 @@ import BlindDatePicker from './components/BlindDatePicker';
 import RideHub from './components/RideHub';
 import ProfileTab from './components/ProfileTab';
 import TabSkeleton from './components/TabSkeleton';
+import { api } from './api';
 
 export default function App() {
   const [onboardingState, setOnboardingState] = useState<OnboardingStep>(() => {
@@ -23,6 +25,12 @@ export default function App() {
   const [isTabLoading, setIsTabLoading] = useState<boolean>(true);
   const [methodUsed, setMethodUsed] = useState<string>(() => {
     return localStorage.getItem('veil_verify_method') || 'SHEERID';
+  });
+
+  const { data: meData } = useQuery({
+    queryKey: ['me'],
+    queryFn: api.me,
+    enabled: onboardingState === 'COMPLETED'
   });
 
   const [isDarkMode, setIsDarkMode] = useState<boolean>(() => {
@@ -180,7 +188,8 @@ export default function App() {
               className="w-10 h-10 rounded-full bg-primary-fixed flex items-center justify-center overflow-hidden border border-outline-variant/30 cursor-pointer hover:border-primary active:scale-95 duration-150 shrink-0"
             >
               <img 
-                alt="User profile avatar of Aryan" 
+                loading="lazy"
+                alt={`User profile avatar of ${meData?.user?.name || 'Student'}`}
                 className="w-full h-full object-cover" 
                 src="https://lh3.googleusercontent.com/aida-public/AB6AXuDN6tE-Nq-4JM6ymFe0W807zmzJF8hryvwLS68F0TRD6ykdzPmAGvfTg5y44RrYVOVgnkkizr92qndlS49ghrStkLmOtOV-poW80tQEx-2_PQiUoRFkpOOnO5cNbjXoqfpYAF1eJNKzZHrWXdI6KwzkmIHpm3a2aav7YaKzhCoKL45kzmWdQTbAMkMc2aMl06FMnsZ0BFnAgLjuNDS0ud7FlAv8-0Lev8mCaRCKUk6Nawn7cvlRjOfotX7ASrjQhY5P7jKw8wIXhTfN"
                 referrerPolicy="no-referrer"
@@ -192,10 +201,10 @@ export default function App() {
 
           <div className="flex flex-col text-left">
             <span className="font-display font-black text-sm text-primary leading-none">
-              Hi, Aryan
+              Hi, {meData?.user?.name ? meData.user.name.split(' ')[0] : 'Student'}
             </span>
             <span className="text-[9px] font-mono font-bold text-on-surface-variant flex items-center gap-1 mt-1 leading-none">
-              IIT Delhi
+              {meData?.user?.college || 'University'}
               <ShieldCheck className="w-3.5 h-3.5 text-primary fill-primary-fixed" />
             </span>
           </div>

@@ -1,10 +1,13 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, Suspense } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { 
   Heart, X, Sparkles, Verified, Lock, MapPin, BrainCircuit, MessageSquare, 
   Send, Compass, HelpCircle, CheckCircle2, UserRoundCheck, ShieldCheck,
-  ChevronDown, SlidersHorizontal
+  ChevronDown, SlidersHorizontal, AlertCircle
 } from 'lucide-react';
 import { DateProfile } from '../types';
+import { api } from '../api';
+import ErrorBoundary from './ErrorBoundary';
 
 export default function BlindDatePicker() {
   const [profileIndex, setProfileIndex] = useState(0);
@@ -20,7 +23,15 @@ export default function BlindDatePicker() {
   const [typeText, setTypeText] = useState('');
   const [isTyping, setIsTyping] = useState(false);
 
-  const getDynamicCompatibility = (p: DateProfile) => {
+  const { data: response, isLoading, isError, error } = useQuery({
+    queryKey: ['matches'],
+    queryFn: api.getMatches,
+  });
+
+  const profiles: DateProfile[] = response?.data || [];
+
+  const getDynamicCompatibility = (p?: DateProfile) => {
+    if (!p) return 0;
     const mySocial = Number(localStorage.getItem('veil_social_resonance')) || 82;
     const myIntel = Number(localStorage.getItem('veil_intellectual_depth')) || 94;
     const mySpon = Number(localStorage.getItem('veil_spontaneity')) || 65;
@@ -30,84 +41,6 @@ export default function BlindDatePicker() {
     // bound between 55 and 99 for a nice college-life match score presentation
     return Math.max(55, Math.min(99, score));
   };
-
-  const [profiles, setProfiles] = useState<DateProfile[]>([
-    {
-      id: 'p1',
-      age: 21,
-      batchAndDegree: 'B.Tech CSE, Batch 2025',
-      compatibilityScore: 88,
-      tags: ['Deep Tech', 'Chess', 'Indie Rock'],
-      sharedInterests: 'Both of you follow "Entrepreneurship Cell" & "Trekking Club".',
-      locationMatch: 'Frequently seen at the "Academic Block B".',
-      socialResonance: 82,
-      intellectualDepth: 94,
-      spontaneity: 65,
-      vibeText: 'Quiet and philosophical, loves long night talks about future tech.',
-      createdAt: '2026-06-15T18:30:00Z',
-      mutualInterestsCount: 2
-    },
-    {
-      id: 'p2',
-      age: 20,
-      batchAndDegree: 'Eco Hons, Batch 2026',
-      compatibilityScore: 92,
-      tags: ['Economics', 'Debate', 'Techno'],
-      sharedInterests: 'Both of you follow "Model United Nations" & "Anime Society".',
-      locationMatch: 'Frequently seen at the "Central Library Reading Lounge".',
-      socialResonance: 90,
-      intellectualDepth: 88,
-      spontaneity: 81,
-      vibeText: 'Fast-paced learner, energetic coffee addict, loves debating policy.',
-      createdAt: '2026-06-16T19:45:00Z',
-      mutualInterestsCount: 3
-    },
-    {
-      id: 'p3',
-      age: 22,
-      batchAndDegree: 'M.Tech AI, Batch 2024',
-      compatibilityScore: 79,
-      tags: ['Neural Nets', 'Billiards', 'Jazz'],
-      sharedInterests: 'Both of you follow "Robotics Club" & "Music Society" & "Trekking Club".',
-      locationMatch: 'Frequently seen at the "SAC Billiards Arena".',
-      socialResonance: 60,
-      intellectualDepth: 96,
-      spontaneity: 45,
-      vibeText: 'Deeply technical, jazz vinyl collector, excels at strategy puzzles.',
-      createdAt: '2026-06-14T10:00:00Z',
-      mutualInterestsCount: 4
-    },
-    {
-      id: 'p4',
-      age: 19,
-      batchAndDegree: 'B.Des Fashion, Batch 2027',
-      compatibilityScore: 84,
-      tags: ['Modern Art', 'Photography', 'House Music'],
-      sharedInterests: 'Both of you follow "Fine Arts Society" & "Photography Club".',
-      locationMatch: 'Frequently seen near the "Design Block Amphitheatre".',
-      socialResonance: 75,
-      intellectualDepth: 80,
-      spontaneity: 92,
-      vibeText: 'Avant-garde thinker, film photographer, loves retro synthwave beats.',
-      createdAt: '2026-06-16T20:10:00Z',
-      mutualInterestsCount: 5
-    },
-    {
-      id: 'p5',
-      age: 20,
-      batchAndDegree: 'B.Sc Physics, Batch 2026',
-      compatibilityScore: 75,
-      tags: ['Quantum Mech', 'Astrophotography', 'Chess'],
-      sharedInterests: 'Both of you follow "Astronomy Club".',
-      locationMatch: 'Frequently seen at the "Campus Astronomy Observatory".',
-      socialResonance: 50,
-      intellectualDepth: 98,
-      spontaneity: 58,
-      vibeText: 'Constantly looking at stars, loves sci-fi literature and espresso bars.',
-      createdAt: '2026-06-12T08:00:00Z',
-      mutualInterestsCount: 1
-    }
-  ]);
 
   const sortedProfiles = useMemo(() => {
     return [...profiles].sort((a, b) => {
@@ -124,12 +57,19 @@ export default function BlindDatePicker() {
     });
   }, [profiles, sortBy]);
 
-  const currentProfile = sortedProfiles[profileIndex % sortedProfiles.length];
+  const currentProfile = sortedProfiles.length > 0 ? sortedProfiles[profileIndex % sortedProfiles.length] : undefined;
 
   const handleSortChange = (newSort: 'compatibility' | 'recently_added' | 'mutual_interests') => {
     setSortBy(newSort);
     setProfileIndex(0);
   };
+
+  // Finite State Machine Derivation
+  let matchState: 'loading' | 'error' | 'empty' | 'success' = 'idle' as any;
+  if (isLoading) matchState = 'loading';
+  else if (isError) matchState = 'error';
+  else if (sortedProfiles.length === 0) matchState = 'empty';
+  else matchState = 'success';
 
   const handleSwipe = (direction: 'left' | 'right') => {
     if (isAnimating) return;
@@ -226,104 +166,129 @@ export default function BlindDatePicker() {
 
       {/* Main matching card */}
       {!isChatting ? (
-        <div className="relative max-w-sm mx-auto h-[480px] w-full">
-          
-          {/* Active Card Stack */}
-          <div 
-            className={`absolute inset-0 crimson-gradient rounded-[28px] p-6 text-white flex flex-col justify-between shadow-xl transition-all duration-300 transform select-none ${
-              swipeDirection === 'left' ? 'translate-x-[-150%] rotate-[-15deg] opacity-0' :
-              swipeDirection === 'right' ? 'translate-x-[150%] rotate-[15deg] opacity-0' :
-              'translate-x-0 rotate-0 scale-100 opacity-100 z-20'
-            }`}
-          >
-            {/* Upper profile header */}
-            <div className="flex justify-between items-start">
-              <div className="space-y-3">
-                <div className="bg-white/10 backdrop-blur-md rounded-full px-3 py-1 inline-flex items-center gap-1.5 border border-white/10">
-                  <ShieldCheck className="w-4.5 h-4.5 text-white/90" />
-                  <span className="font-display text-[10px] font-bold uppercase tracking-wider">
-                    Verified Student
-                  </span>
+        <ErrorBoundary>
+          <Suspense fallback={<div className="h-[480px] flex items-center justify-center"><span className="text-sm font-mono">Loading...</span></div>}>
+            <div className="relative max-w-sm mx-auto h-[480px] w-full">
+              
+              {matchState === 'loading' && (
+                <div className="absolute inset-0 bg-surface-container-high rounded-[28px] animate-pulse flex items-center justify-center border border-outline-variant/15 z-10">
+                  <span className="text-sm font-mono font-bold text-on-surface-variant">Finding matches...</span>
                 </div>
-                
-                <div className="space-y-0.5">
-                  <p className="font-display text-xl font-bold font-display tracking-tight">
-                    {currentProfile.age} YRS
-                  </p>
-                  <p className="text-xs text-white/80 font-medium">
-                    {currentProfile.batchAndDegree}
-                  </p>
+              )}
+
+              {matchState === 'error' && (
+                <div className="absolute inset-0 border border-outline-variant/15 rounded-[28px] flex flex-col items-center justify-center p-6 text-center text-on-surface-variant bg-surface-container-low z-10">
+                  <AlertCircle className="w-8 h-8 text-error mb-2" />
+                  <p className="text-sm font-medium">Failed to load matches</p>
                 </div>
-              </div>
+              )}
 
-              {/* Compatibility circular dial */}
-              <div className="relative w-16 h-16 flex items-center justify-center bg-white/10 rounded-full border border-white/20">
-                <svg className="w-full h-full -rotate-90">
-                  <circle className="opacity-20" cx="32" cy="32" fill="transparent" r="26" stroke="currentColor" strokeWidth="3" />
-                  <circle 
-                    className="text-white" 
-                    cx="32" 
-                    cy="32" 
-                    fill="transparent" 
-                    r="26" 
-                    stroke="currentColor" 
-                    strokeDasharray="163.3" 
-                    strokeDashoffset={163.3 - (163.3 * getDynamicCompatibility(currentProfile)) / 100} 
-                    strokeLinecap="round" 
-                    strokeWidth="3" 
-                  />
-                </svg>
-                <div className="absolute inset-0 flex flex-col items-center justify-center">
-                  <span className="font-display text-xs font-black tracking-tighter">
-                    {getDynamicCompatibility(currentProfile)}%
-                  </span>
+              {matchState === 'empty' && (
+                <div className="absolute inset-0 border border-outline-variant/15 rounded-[28px] flex flex-col items-center justify-center p-6 text-center text-on-surface-variant bg-surface-container-low z-10">
+                  <UserRoundCheck className="w-8 h-8 text-on-surface-variant mb-2" />
+                  <p className="text-sm font-medium">No compatible students found</p>
                 </div>
-              </div>
-            </div>
+              )}
 
-            {/* Mystery Abstract Core Visual */}
-            <div className="flex-1 flex items-center justify-center py-4 relative">
-              <div className="absolute w-24 h-24 bg-white/10 rounded-full blur-2xl animate-pulse"></div>
-              <Compass 
-                className="w-24 h-24 text-white/20 relative z-10 animate-spin" 
-                style={{ animationDuration: '60s' }}
-              />
-            </div>
-
-            {/* Bottom Traits Tag Pillar and CTA Buttons */}
-            <div className="space-y-4">
-              <div className="flex flex-wrap gap-1.5">
-                {currentProfile.tags.map((tag, idx) => (
-                  <span 
-                    key={idx} 
-                    className="bg-white/10 px-2.5 py-1 rounded-full text-[10px] font-mono tracking-wider text-white"
-                  >
-                    {tag}
-                  </span>
-                ))}
-              </div>
-
-              <div className="grid grid-cols-2 gap-3.5">
-                <button 
-                  onClick={() => handleSwipe('left')}
-                  className="bg-white/10 backdrop-blur-sm text-white font-display text-xs font-bold py-3.5 rounded-xl border border-white/15 outline-none hover:bg-white/15 active:scale-95 transition-all text-center"
+              {matchState === 'success' && currentProfile && (
+                <div 
+                  className={`absolute inset-0 crimson-gradient rounded-[28px] p-6 text-white flex flex-col justify-between shadow-xl transition-all duration-300 transform select-none ${
+                    swipeDirection === 'left' ? 'translate-x-[-150%] rotate-[-15deg] opacity-0' :
+                    swipeDirection === 'right' ? 'translate-x-[150%] rotate-[15deg] opacity-0' :
+                    'translate-x-0 rotate-0 scale-100 opacity-100 z-20'
+                  }`}
                 >
-                  Pass
-                </button>
-                <button 
-                  onClick={startChatConversation}
-                  className="bg-white text-primary font-display text-xs font-bold py-3.5 rounded-xl shadow-lg border border-transparent outline-none hover:bg-white/90 active:scale-95 transition-all text-center flex items-center justify-center gap-1.5"
-                >
-                  <MessageSquare className="w-4 h-4" />
-                  Start Chat
-                </button>
-              </div>
-            </div>
-          </div>
+                  {/* Upper profile header */}
+                  <div className="flex justify-between items-start">
+                    <div className="space-y-3">
+                      <div className="bg-white/10 backdrop-blur-md rounded-full px-3 py-1 inline-flex items-center gap-1.5 border border-white/10">
+                        <ShieldCheck className="w-4.5 h-4.5 text-white/90" />
+                        <span className="font-display text-[10px] font-bold uppercase tracking-wider">
+                          Verified Student
+                        </span>
+                      </div>
+                      
+                      <div className="space-y-0.5">
+                        <p className="font-display text-xl font-bold font-display tracking-tight">
+                          {currentProfile?.age} YRS
+                        </p>
+                        <p className="text-xs text-white/80 font-medium">
+                          {currentProfile?.batchAndDegree}
+                        </p>
+                      </div>
+                    </div>
 
-          {/* Underneath stacked card (Subtle visual hint) */}
-          <div className="absolute inset-0 crimson-gradient rounded-[28px] opacity-40 translate-y-3.5 scale-[0.96] z-10 blur-[0.5px]"></div>
-        </div>
+                    {/* Compatibility circular dial */}
+                    <div className="relative w-16 h-16 flex items-center justify-center bg-white/10 rounded-full border border-white/20">
+                      <svg className="w-full h-full -rotate-90">
+                        <circle className="opacity-20" cx="32" cy="32" fill="transparent" r="26" stroke="currentColor" strokeWidth="3" />
+                        <circle 
+                          className="text-white" 
+                          cx="32" 
+                          cy="32" 
+                          fill="transparent" 
+                          r="26" 
+                          stroke="currentColor" 
+                          strokeDasharray="163.3" 
+                          strokeDashoffset={163.3 - (163.3 * getDynamicCompatibility(currentProfile)) / 100} 
+                          strokeLinecap="round" 
+                          strokeWidth="3" 
+                        />
+                      </svg>
+                      <div className="absolute inset-0 flex flex-col items-center justify-center">
+                        <span className="font-display text-xs font-black tracking-tighter">
+                          {getDynamicCompatibility(currentProfile)}%
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Mystery Abstract Core Visual */}
+                  <div className="flex-1 flex items-center justify-center py-4 relative">
+                    <div className="absolute w-24 h-24 bg-white/10 rounded-full blur-2xl animate-pulse"></div>
+                    <Compass 
+                      className="w-24 h-24 text-white/20 relative z-10 animate-spin" 
+                      style={{ animationDuration: '60s' }}
+                    />
+                  </div>
+
+                  {/* Bottom Traits Tag Pillar and CTA Buttons */}
+                  <div className="space-y-4">
+                    <div className="flex flex-wrap gap-1.5">
+                      {currentProfile?.tags?.map((tag, idx) => (
+                        <span 
+                          key={idx} 
+                          className="bg-white/10 px-2.5 py-1 rounded-full text-[10px] font-mono tracking-wider text-white"
+                        >
+                          {tag}
+                        </span>
+                      ))}
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-3.5">
+                      <button 
+                        onClick={() => handleSwipe('left')}
+                        className="bg-white/10 backdrop-blur-sm text-white font-display text-xs font-bold py-3.5 rounded-xl border border-white/15 outline-none hover:bg-white/15 active:scale-95 transition-all text-center"
+                      >
+                        Pass
+                      </button>
+                      <button 
+                        onClick={startChatConversation}
+                        className="bg-white text-primary font-display text-xs font-bold py-3.5 rounded-xl shadow-lg border border-transparent outline-none hover:bg-white/90 active:scale-95 transition-all text-center flex items-center justify-center gap-1.5"
+                      >
+                        <MessageSquare className="w-4 h-4" />
+                        Start Chat
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Underneath stacked card (Subtle visual hint) */}
+              <div className="absolute inset-0 crimson-gradient rounded-[28px] opacity-40 translate-y-3.5 scale-[0.96] z-10 blur-[0.5px]"></div>
+            </div>
+          </Suspense>
+        </ErrorBoundary>
       ) : (
         /* LIVE Anonymous Chat Interface Block */
         <div className="bg-white rounded-3xl overflow-hidden card-shadow border border-outline-variant/30 flex flex-col h-[480px] max-w-sm mx-auto w-full animate-fade-in">
@@ -335,7 +300,7 @@ export default function BlindDatePicker() {
               </div>
               <div>
                 <h4 className="font-display text-xs font-bold leading-none uppercase">Anonymous Match</h4>
-                <p className="text-[10px] text-white/70 mt-0.5 font-mono">{currentProfile.batchAndDegree}</p>
+                <p className="text-[10px] text-white/70 mt-0.5 font-mono">{currentProfile?.batchAndDegree || 'Unknown Degree'}</p>
               </div>
             </div>
             
@@ -416,19 +381,19 @@ export default function BlindDatePicker() {
             <div>
               <h4 className="font-display text-xs font-bold text-on-surface">Shared Clubs</h4>
               <p className="text-[11px] text-on-surface-variant leading-tight mt-0.5">
-                {currentProfile.sharedInterests}
+                {currentProfile?.sharedInterests || 'No shared clubs'}
               </p>
             </div>
           </div>
 
           <div className="glass-card card-shadow rounded-2xl p-4 border border-outline-variant/20 flex items-center gap-3.5">
-            <div className="w-10 h-10 bg-primary-fixed rounded-xl flex items-center justify-center shrink-0">
-              <MapPin className="w-5 h-5 text-primary" />
+            <div className="w-10 h-10 bg-secondary/10 rounded-xl flex items-center justify-center shrink-0">
+              <MapPin className="w-5 h-5 text-secondary" />
             </div>
             <div>
-              <h4 className="font-display text-xs font-bold text-on-surface">Location Match</h4>
+              <h4 className="font-display text-xs font-bold text-on-surface">Hotspot</h4>
               <p className="text-[11px] text-on-surface-variant leading-tight mt-0.5">
-                {currentProfile.locationMatch}
+                {currentProfile?.locationMatch || 'Unknown location'}
               </p>
             </div>
           </div>

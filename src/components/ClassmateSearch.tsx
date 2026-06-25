@@ -1,5 +1,7 @@
 import React, { useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { Search, Compass, Verified, CheckCircle2, UserCheck, MessageSquare, ShieldCheck, Mail } from 'lucide-react';
+import { api } from '../api';
 
 interface Classmate {
   id: string;
@@ -14,51 +16,13 @@ interface Classmate {
 
 export default function ClassmateSearch() {
   const [query, setQuery] = useState('');
-  
-  const classmates: Classmate[] = [
-    {
-      id: 'c1',
-      name: 'Rohan Verma',
-      college: 'IIT Delhi',
-      degree: 'B.Tech Electrical, Class of 2024',
-      avatarText: 'RV',
-      compatibility: 91,
-      tags: ['Competitive Programming', 'Physics', 'Techno']
-    },
-    {
-      id: 'c2',
-      name: 'Priyah Patel',
-      college: 'IIT Delhi',
-      degree: 'B.Des Fashion, Class of 2025',
-      avatarText: 'PP',
-      compatibility: 87,
-      tags: ['Graphic Design', 'Jazz', 'Billiards']
-    },
-    {
-      id: 'c3',
-      name: 'Aryan Sharma',
-      college: 'IIT Delhi',
-      degree: 'B.Tech Computers, Class of 2025',
-      avatarText: 'AS',
-      compatibility: 100,
-      tags: ['Deep Tech', 'Chess', 'Indie Rock']
-    },
-    {
-      id: 'c4',
-      name: 'Sneha Rao',
-      college: 'IIT Delhi',
-      degree: 'M.Sc Biochemistry, Class of 2024',
-      avatarText: 'SR',
-      compatibility: 76,
-      tags: ['Literature', 'Coffee', 'Trekking']
-    }
-  ];
 
-  const filtered = classmates.filter(c => 
-    c.name.toLowerCase().includes(query.toLowerCase()) || 
-    c.tags.some(tag => tag.toLowerCase().includes(query.toLowerCase())) ||
-    c.degree.toLowerCase().includes(query.toLowerCase())
-  );
+  const { data: classmates = [], isLoading } = useQuery<Classmate[]>({
+    queryKey: ['classmates', query],
+    queryFn: () => api.searchClassmates(query)
+  });
+
+  const filtered = classmates;
 
   return (
     <div className="space-y-6 animate-fade-in text-left pb-32 max-w-sm mx-auto">

@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Sparkles, MessageSquare, Heart, ThumbsUp, PlusCircle, Send, X } from 'lucide-react';
 import { AnonymousConfession } from '../types';
+import { api } from '../api';
 
 interface ConfessionsProps {
   isOpen: boolean;
@@ -8,61 +10,37 @@ interface ConfessionsProps {
 }
 
 export default function Confessions({ isOpen, onClose }: ConfessionsProps) {
-  const [confessions, setConfessions] = useState<AnonymousConfession[]>([
-    {
-      id: '1',
-      content: 'I have been secretly studying 6 hours a day in the library basement and telling everyone that I am playing FIFA in my room. The competition is real!',
-      timestamp: '30 mins ago',
-      upvotes: 42,
-      hasUpvoted: false,
-      commentsCount: 12
-    },
-    {
-      id: '2',
-      content: 'Can someone tell the canteen staff to make the tea stronger? I need that caffeine boost for the morning lectures.',
-      timestamp: '2 hours ago',
-      upvotes: 18,
-      hasUpvoted: true,
-      commentsCount: 5
-    },
-    {
-      id: '3',
-      content: 'Secretly matched with my lab partner on Blind Date yesterday but I am too nervous to ask who they are offline...',
-      timestamp: '4 hours ago',
-      upvotes: 56,
-      hasUpvoted: false,
-      commentsCount: 9
-    }
-  ]);
-
+  const queryClient = useQueryClient();
   const [newPost, setNewPost] = useState('');
 
-  const handlePost = async (e: React.FormEvent) => {
+  const { data: confessions = [], isLoading } = useQuery<AnonymousConfession[]>({
+    queryKey: ['confessions'],
+    queryFn: api.getConfessions
+  });
+
+  const createMutation = useMutation({
+    mutationFn: (content: string) => api.createConfession(content),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['confessions'] });
+      setNewPost('');
+    }
+  });
+
+  const handlePost = (e: React.FormEvent) => {
     e.preventDefault();
     if (!newPost.trim()) return;
-
-    try {
-      const { api } = await import('../api');
-      await api.createConfession(newPost.trim());
-      setNewPost('');
-      // Assuming a fetchConfessions function exists or handle state manually
-    } catch (err) {
-      console.error('Failed to post confession', err);
-    }
+    createMutation.mutate(newPost.trim());
   };
 
+  const upvoteMutation = useMutation({
+    mutationFn: (id: string) => api.upvoteConfession(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['confessions'] });
+    }
+  });
+
   const handleUpvote = (id: string) => {
-    setConfessions(confessions.map(c => {
-      if (c.id === id) {
-        const hasUpvotedNow = !c.hasUpvoted;
-        return {
-          ...c,
-          hasUpvoted: hasUpvotedNow,
-          upvotes: hasUpvotedNow ? c.upvotes + 1 : c.upvotes - 1
-        };
-      }
-      return c;
-    }));
+    upvoteMutation.mutate(id);
   };
 
   if (!isOpen) return null;

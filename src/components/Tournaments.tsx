@@ -1,6 +1,8 @@
-import React, { useState } from 'react';
+import React from 'react';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Trophy, Calendar, Users, X, CheckSquare, Gamepad2, Sparkles } from 'lucide-react';
 import { Tournament } from '../types';
+import { api } from '../api';
 
 interface TournamentsProps {
   isOpen: boolean;
@@ -8,65 +10,22 @@ interface TournamentsProps {
 }
 
 export default function Tournaments({ isOpen, onClose }: TournamentsProps) {
-  const [tournaments, setTournaments] = useState<Tournament[]>([
-    {
-      id: '1',
-      gameTitle: 'Valorant 5v5: Campus Cup',
-      prizePool: '₹25,000 cash prize',
-      teamsRegistered: 12,
-      maxTeams: 16,
-      dateText: 'Starts June 20, 04:00 PM',
-      isRegistered: false
-    },
-    {
-      id: '2',
-      gameTitle: 'Billiards Singles Tournament',
-      prizePool: 'Premium cue set + Cup medal',
-      teamsRegistered: 8,
-      maxTeams: 8,
-      dateText: 'Starts June 22, 02:00 PM',
-      isRegistered: true
-    },
-    {
-      id: '3',
-      gameTitle: 'Inter-Hostel Chess Arena',
-      prizePool: '₹10,000 Voucher',
-      teamsRegistered: 28,
-      maxTeams: 32,
-      dateText: 'Starts June 25, 06:00 PM',
-      isRegistered: false
-    }
-  ]);
+  const queryClient = useQueryClient();
 
-  const handleJoinTournament = async (id: string) => {
-    try {
-      const { api } = await import('../api');
-      await api.registerTournament(id);
-      fetchTournaments();
-    } catch (err) {
-      console.error(err);
-    }
-  };
+  const { data: tournaments = [], isLoading } = useQuery<Tournament[]>({
+    queryKey: ['tournaments'],
+    queryFn: api.getTournaments
+  });
 
-  const fetchTournaments = async () => {
-    // Implementation for refreshing data
-  };
+  const registerMutation = useMutation({
+    mutationFn: (id: string) => api.registerTournament(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['tournaments'] });
+    }
+  });
 
   const handleRegister = (id: string) => {
-    setTournaments(tournaments.map(t => {
-      if (t.id === id) {
-        if (t.isRegistered) {
-          return { ...t, isRegistered: false, teamsRegistered: Math.max(0, t.teamsRegistered - 1) };
-        } else {
-          if (t.teamsRegistered >= t.maxTeams) {
-            alert('This tournament slot has already filled up!');
-            return t;
-          }
-          return { ...t, isRegistered: true, teamsRegistered: t.teamsRegistered + 1 };
-        }
-      }
-      return t;
-    }));
+    registerMutation.mutate(id);
   };
 
   if (!isOpen) return null;

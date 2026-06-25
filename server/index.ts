@@ -5,18 +5,41 @@ import bcrypt from 'bcryptjs';
 import dotenv from 'dotenv';
 import { db, initDatabase, run, get, query } from './db';
 import { generateToken, authenticateToken, AuthenticatedRequest } from './auth';
+import helmet from 'helmet';
+import rateLimit from 'express-rate-limit';
 
 dotenv.config();
 
 const app = express();
 const PORT = process.env.PORT || 3001;
 
+app.use(helmet());
+
+// Apply basic rate limiting to all requests
+const limiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 100, // Limit each IP to 100 requests per `window` (here, per 15 minutes)
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+app.use(limiter);
+
 app.use(cors({
   origin: '*', // Allow all origins for local development simplicity, can restrict later
   credentials: true
 }));
-app.use(express.json());
+app.use(express.json({ limit: '100kb' })); // Limit body payload to 100kb to prevent bloat
 
+// Add basic caching headers for production optimization
+app.use((req, res, next) => {
+  if (req.method === 'GET') {
+    // Client-side caching for 30 seconds for all GET requests to reduce load
+    res.set('Cache-Control', 'public, max-age=30');
+  } else {
+    res.set('Cache-Control', 'no-store');
+  }
+  next();
+});
 // Initialize SQLite database
 initDatabase().then(() => {
   console.log('Database system initialized.');
@@ -209,9 +232,33 @@ app.get('/api/profile/matches', authenticateToken, async (req: AuthenticatedRequ
       };
     }).sort((a, b) => b.compatibilityScore - a.compatibilityScore);
 
-    res.json(matches);
+    res.json({ success: true, data: matches });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// Trending events route
+app.get('/api/events/trending', authenticateToken, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const events = await query('SELECT * FROM events ORDER BY interested_count DESC LIMIT 10');
+    
+    // Map database fields to frontend camelCase
+    const formattedEvents = events.map((e: any) => ({
+      id: e.id,
+      title: e.title,
+      category: e.category,
+      image: e.image,
+      startDate: e.start_date,
+      endDate: e.end_date,
+      location: e.location,
+      interestedCount: e.interested_count,
+      universityId: e.university_id
+    }));
+
+    res.json({ success: true, data: formattedEvents });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
   }
 });
 
@@ -275,31 +322,34 @@ app.get('/api/feed', authenticateToken, async (req: AuthenticatedRequest, res: R
         (SELECT COUNT(*) FROM post_interests WHERE post_id = p.id AND user_id = ?) as isInterestedByMe
       FROM posts p
       ORDER BY p.created_at DESC
+      LIMIT 50
     `, [req.userId]);
 
-    const feedItems = [];
+    const pollPostIds = posts.filter(p => p.type === 'poll').map(p => p.id);
+    let allOptions: any[] = [];
+    
+    if (pollPostIds.length > 0) {
+      const placeholders = pollPostIds.map(() => '?').join(',');
+      allOptions = await query(`
+        SELECT o.id, o.post_id, o.text, 
+          (SELECT COUNT(*) FROM poll_votes v WHERE v.option_id = o.id) as voteCount,
+          (SELECT option_id FROM poll_votes v WHERE v.option_id = o.id AND v.user_id = ?) as userVotedOption
+        FROM poll_options o
+        WHERE o.post_id IN (${placeholders})
+      `, [req.userId, ...pollPostIds]);
+    }
 
-    for (const p of posts) {
+    const optionsByPostId = allOptions.reduce((acc: any, opt: any) => {
+      if (!acc[opt.post_id]) acc[opt.post_id] = { options: [], userVotedOptionId: null };
+      acc[opt.post_id].options.push({ id: opt.id, text: opt.text, votes: opt.voteCount });
+      if (opt.userVotedOption) acc[opt.post_id].userVotedOptionId = opt.id;
+      return acc;
+    }, {});
+
+    const feedItems = posts.map(p => {
       if (p.type === 'poll') {
-        const options = await query('SELECT id, text FROM poll_options WHERE post_id = ?', [p.id]);
-        const finalOptions = [];
-        let userVotedOptionId = null;
-
-        for (const opt of options) {
-          const voteCount = await get('SELECT COUNT(*) as count FROM poll_votes WHERE option_id = ?', [opt.id]);
-          finalOptions.push({
-            id: opt.id,
-            text: opt.text,
-            votes: voteCount.count
-          });
-
-          const voted = await get('SELECT option_id FROM poll_votes WHERE option_id = ? AND user_id = ?', [opt.id, req.userId]);
-          if (voted) {
-            userVotedOptionId = opt.id;
-          }
-        }
-
-        feedItems.push({
+        const pollData = optionsByPostId[p.id] || { options: [], userVotedOptionId: null };
+        return {
           id: p.id,
           type: 'poll',
           authorName: p.author_name,
@@ -308,11 +358,11 @@ app.get('/api/feed', authenticateToken, async (req: AuthenticatedRequest, res: R
           timeAgoText: 'Recently',
           locationText: p.location_text || '',
           content: p.content,
-          pollOptions: finalOptions,
-          userVotedOptionId
-        });
+          pollOptions: pollData.options,
+          userVotedOptionId: pollData.userVotedOptionId
+        };
       } else {
-        feedItems.push({
+        return {
           id: p.id,
           type: 'post',
           authorName: p.author_name,
@@ -323,9 +373,9 @@ app.get('/api/feed', authenticateToken, async (req: AuthenticatedRequest, res: R
           content: p.content,
           interestedCount: p.interestedCount,
           isInterestedByMe: !!p.isInterestedByMe
-        });
+        };
       }
-    }
+    });
 
     res.json(feedItems);
   } catch (err: any) {
@@ -335,8 +385,8 @@ app.get('/api/feed', authenticateToken, async (req: AuthenticatedRequest, res: R
 
 app.post('/api/feed/post', authenticateToken, async (req: AuthenticatedRequest, res: Response) => {
   const { content, locationText, authorLabel } = req.body;
-  if (!content) {
-    res.status(400).json({ error: 'Content is required' });
+  if (!content || typeof content !== 'string' || content.length > 1000) {
+    res.status(400).json({ error: 'Content is required and must be under 1000 characters' });
     return;
   }
 
@@ -356,8 +406,8 @@ app.post('/api/feed/post', authenticateToken, async (req: AuthenticatedRequest, 
 
 app.post('/api/feed/poll', authenticateToken, async (req: AuthenticatedRequest, res: Response) => {
   const { content, options, locationText, authorLabel } = req.body;
-  if (!content || !options || options.length < 2) {
-    res.status(400).json({ error: 'Content and at least 2 poll options are required' });
+  if (!content || typeof content !== 'string' || content.length > 500 || !options || options.length < 2 || options.length > 5) {
+    res.status(400).json({ error: 'Content and between 2 to 5 poll options are required' });
     return;
   }
 
@@ -431,6 +481,7 @@ app.get('/api/confessions', authenticateToken, async (req: AuthenticatedRequest,
         (SELECT COUNT(*) FROM confession_comments WHERE confession_id = c.id) as commentsCount
       FROM confessions c
       ORDER BY c.created_at DESC
+      LIMIT 50
     `, [req.userId]);
 
     res.json(confessions.map((c: any) => ({
@@ -448,8 +499,8 @@ app.get('/api/confessions', authenticateToken, async (req: AuthenticatedRequest,
 
 app.post('/api/confessions', authenticateToken, async (req: AuthenticatedRequest, res: Response) => {
   const { content } = req.body;
-  if (!content) {
-    res.status(400).json({ error: 'Confession text is required' });
+  if (!content || typeof content !== 'string' || content.length > 2000) {
+    res.status(400).json({ error: 'Confession text is required and must be under 2000 characters' });
     return;
   }
 
@@ -730,6 +781,42 @@ app.post('/api/tournaments/:id/register', authenticateToken, async (req: Authent
       await run('INSERT INTO tournament_registrations (tournament_id, user_id) VALUES (?, ?)', [tourneyId, req.userId]);
       res.json({ registered: true });
     }
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// App Store Compliance: UGC Moderation & Account Deletion
+app.post('/api/users/:id/report', authenticateToken, async (req: AuthenticatedRequest, res: Response) => {
+  const reportedId = req.params.id;
+  const { reason } = req.body;
+  try {
+    const id = crypto.randomUUID();
+    await run('INSERT INTO user_reports (id, reporter_id, reported_id, reason) VALUES (?, ?, ?, ?)', [id, req.userId, reportedId, reason || 'Inappropriate Content']);
+    res.json({ success: true, message: 'User reported successfully' });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/users/:id/block', authenticateToken, async (req: AuthenticatedRequest, res: Response) => {
+  const blockedId = req.params.id;
+  try {
+    await run('INSERT OR IGNORE INTO user_blocks (blocker_id, blocked_id) VALUES (?, ?)', [req.userId, blockedId]);
+    res.json({ success: true, message: 'User blocked successfully' });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.delete('/api/users/me', authenticateToken, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    // Delete user and cascade delete everything related
+    await run('DELETE FROM users WHERE id = ?', [req.userId]);
+    // Optionally delete from other tables, though cascade is better if foreign keys are enabled.
+    await run('DELETE FROM compatibility_profiles WHERE user_id = ?', [req.userId]);
+    await run('DELETE FROM posts WHERE author_id = ?', [req.userId]);
+    res.json({ success: true, message: 'Account permanently deleted' });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }

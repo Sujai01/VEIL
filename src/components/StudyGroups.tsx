@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Users, Landmark, MapPin, Clock, X, Plus, BookOpen, Search } from 'lucide-react';
 import { StudyGroup } from '../types';
+import { api } from '../api';
 
 interface StudyGroupsProps {
   isOpen: boolean;
@@ -9,77 +11,44 @@ interface StudyGroupsProps {
 
 export default function StudyGroups({ isOpen, onClose }: StudyGroupsProps) {
   const [filterQuery, setFilterQuery] = useState('');
-  const [groups, setGroups] = useState<StudyGroup[]>([
-    {
-      id: '1',
-      subject: 'Algorithms (COL106)',
-      topic: 'Dynamic Programming & Graph Theory Prep',
-      membersCount: 4,
-      maxMembers: 6,
-      timeText: 'Today, 05:00 PM',
-      location: 'Library Basement Room C',
-      isJoined: false
-    },
-    {
-      id: '2',
-      subject: 'Microeconomics (MCL201)',
-      topic: 'Game Theory & Nash Equilibrium practice',
-      membersCount: 3,
-      maxMembers: 5,
-      timeText: 'Tomorrow, 02:30 PM',
-      location: 'Academic Block B Lounge',
-      isJoined: true
-    },
-    {
-      id: '3',
-      subject: 'Machine Learning (ELL409)',
-      topic: 'Neural Network Weights & Backpropagation review',
-      membersCount: 2,
-      maxMembers: 4,
-      timeText: 'June 18, 11:00 AM',
-      location: 'Main Cafe Sitting Alcove',
-      isJoined: false
-    }
-  ]);
+  const queryClient = useQueryClient();
+
+  const { data: groups = [], isLoading } = useQuery<StudyGroup[]>({
+    queryKey: ['studyGroups'],
+    queryFn: api.getStudyGroups
+  });
 
   const [newSubject, setNewSubject] = useState('');
   const [newTopic, setNewTopic] = useState('');
   const [newLocation, setNewLocation] = useState('');
   const [isAdding, setIsAdding] = useState(false);
 
+  const joinMutation = useMutation({
+    mutationFn: (id: string) => api.joinStudyGroup(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['studyGroups'] });
+    }
+  });
+
   const handleJoin = (id: string) => {
-    setGroups(groups.map(g => {
-      if (g.id === id) {
-        if (g.isJoined) {
-          return { ...g, isJoined: false, membersCount: g.membersCount - 1 };
-        } else {
-          return { ...g, isJoined: true, membersCount: Math.min(g.maxMembers, g.membersCount + 1) };
-        }
-      }
-      return g;
-    }));
+    joinMutation.mutate(id);
   };
+
+  const createMutation = useMutation({
+    mutationFn: (body: any) => api.createStudyGroup(body),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['studyGroups'] });
+      setNewSubject('');
+      setNewTopic('');
+      setNewLocation('');
+      setIsAdding(false);
+    }
+  });
 
   const handleCreate = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newSubject.trim() || !newTopic.trim()) return;
-
-    const group: StudyGroup = {
-      id: Date.now().toString(),
-      subject: newSubject,
-      topic: newTopic,
-      membersCount: 1,
-      maxMembers: 5,
-      timeText: 'Today, Just created',
-      location: newLocation.trim() || 'SAC Study Lounge',
-      isJoined: true
-    };
-
-    setGroups([group, ...groups]);
-    setNewSubject('');
-    setNewTopic('');
-    setNewLocation('');
-    setIsAdding(false);
+    if (!newSubject || !newTopic || !newLocation) return;
+    createMutation.mutate({ subject: newSubject, topic: newTopic, location: newLocation, maxMembers: 5 });
   };
 
   const filteredGroups = groups.filter(g => 

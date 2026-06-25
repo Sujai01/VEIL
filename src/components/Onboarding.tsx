@@ -327,6 +327,7 @@ export default function Onboarding({ onComplete, onBackToSplash }: OnboardingPro
             {/* Dynamic Campus Library Graphic */}
             <div className="rounded-2xl overflow-hidden shadow-md h-40 relative group border border-outline-variant/20">
               <img 
+                loading="lazy"
                 alt="College Campus Library" 
                 className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105" 
                 src="https://lh3.googleusercontent.com/aida-public/AB6AXuAep6kYZAKmqy3vqt9HHBuxCveNVoPk31TMIyFXhGt-xj7bOTZwDKrycoi9s5tQG80qb2N0vNLTfWbsRT7gZieRt2RzQOcBYwqTEWep1NA1XQvviLMAFSeTubEzUxdHx_0rhl9dYa4xmpqRk2lSD7p7NlZFOYckWR4jzzIYjgnlVWl2V-b-zHemIQBAUiFmQat7DmnK9SWLICz4I59nYVtKKZ6Y0y6aXwoXNwoAaNS_Rr5qVa6UuvPNA8KDoMF3PmisPCvGKdHfKbfP"
